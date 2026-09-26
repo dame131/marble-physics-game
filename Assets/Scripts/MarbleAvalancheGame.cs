@@ -4,13 +4,6 @@ using UnityEngine;
 
 // A single-scene playable Unity foundation. Attached marbles use no Rigidbodies;
 // falling marbles gain physics only after their connection to the ceiling is cut.
-public sealed class MarblePiece : MonoBehaviour
-{
-    public int ColorIndex, Row = -1, Column = -1;
-    public bool IsFalling, Scored;
-    public Rigidbody Body;
-}
-
 public sealed class MarbleAvalancheGame : MonoBehaviour
 {
     const int Columns = 21, Rows = 30, PaletteCount = 8;
