@@ -181,6 +181,14 @@ const COLORS = [
   { main: '#20d0e0', light: '#90ffff', dark: '#006080' },
   { main: '#e040a0', light: '#ff98d0', dark: '#800040' },
 ];
+const COLOR_NAMES = ['RED','BLUE','GREEN','GOLD','PURPLE','ORANGE','CYAN','PINK'];
+
+function chooseColor(exclude) {
+  const available = new Set();
+  for (const row of grid) for (const color of row) if (color !== null && color !== exclude) available.add(color);
+  const choices = available.size ? [...available] : COLORS.map((_, i) => i).filter(i => i !== exclude);
+  return choices[Math.floor(Math.random() * choices.length)];
+}
 
 const MAX_ROWS = 30;
 const MAX_COLS = 20;
@@ -237,8 +245,8 @@ function initGrid() {
     grid.push(row);
   }
   revealed = grid.map(row => row.map(() => false));
-  currentColor = Math.floor(Math.random() * COLORS.length);
-  nextColor = Math.floor(Math.random() * COLORS.length);
+  currentColor = chooseColor(-1);
+  nextColor = chooseColor(currentColor);
 }
 
 function getBubbleX(r, c) {
@@ -397,7 +405,7 @@ function attachBubble(x, y, color) {
     }
   }
   currentColor = nextColor;
-  nextColor = Math.floor(Math.random() * COLORS.length);
+  nextColor = chooseColor(currentColor);
   updateUI();
   checkLose();
 }
@@ -627,7 +635,7 @@ function drawCannon() {
   ctx.fillStyle = 'rgba(255,255,255,0.65)';
   ctx.font = '9px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('NEXT', cx + 52, cy + 28);
+  ctx.fillText('OPTION 2', cx + 52, cy + 28);
 }
 
 function drawTrajectory() {
@@ -712,8 +720,10 @@ function updateAim(pos) {
 
 canvas.addEventListener('mousedown', function(e) {
   if (gameOver) return;
+  const pos = getPos(e);
+  if (Math.hypot(pos.x - (W / 2 + 52), pos.y - (H - 78)) < 28) { swapColors(); return; }
   isAiming = true;
-  updateAim(getPos(e));
+  updateAim(pos);
 });
 canvas.addEventListener('mousemove', function(e) {
   if (isAiming) updateAim(getPos(e));
@@ -722,8 +732,10 @@ canvas.addEventListener('mouseup', function() { isAiming = false; });
 canvas.addEventListener('touchstart', function(e) {
   e.preventDefault();
   if (gameOver) return;
+  const pos = getPos(e);
+  if (Math.hypot(pos.x - (W / 2 + 52), pos.y - (H - 78)) < 28) { swapColors(); return; }
   isAiming = true;
-  updateAim(getPos(e));
+  updateAim(pos);
 }, {passive: false});
 canvas.addEventListener('touchmove', function(e) {
   e.preventDefault();
@@ -735,12 +747,13 @@ canvas.addEventListener('touchend', function(e) {
 });
 
 document.getElementById('btn-fire').onclick = shoot;
-document.getElementById('btn-swap').onclick = function() {
+function swapColors() {
   if (gameOver || flying) return;
   const t = currentColor; currentColor = nextColor; nextColor = t;
-  showMsg('SWAPPED!');
+  showMsg('LOADED: ' + COLOR_NAMES[currentColor]);
   beep(380, 0.09);
-};
+}
+document.getElementById('btn-swap').onclick = swapColors;
 document.getElementById('btn-blast').onclick = function() {
   if (gameOver || flying || shots < 1) return;
   let found = false;
