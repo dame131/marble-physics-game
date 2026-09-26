@@ -1,6 +1,6 @@
 # Marble Avalanche — Unity foundation
 
-Unity 2022.3.20f1 project for a touch-controlled 3D marble shooter. The starter scene is generated on first opening the project. Aim and release to shoot, swap colors, match three, cut ceiling support to drop marbles, score through three gold baskets, fire a cannon with smoke, uncover a private portrait cell by cell, and unlock a 100-stop procedural level map. The 100 stops are **procedural variations, not 100 handcrafted boards**.
+Unity 2022.3.20f1 project for a touch-controlled 3D marble shooter. The starter scene is generated on first opening the project. Aim and release to shoot, swap colors, match three, cut ceiling support to drop marbles, score through three gold baskets, fire a cannon with smoke, uncover a private portrait cell by cell, play 100 reproducible procedural boards across 10 named worlds, earn stars and coins, and spin a free level-complete reward. The 100 stops are **procedural variations, not 100 handcrafted boards**.
 
 ## Open and play
 
@@ -14,7 +14,7 @@ The photo is drawn upright through UV rotation while the source file remains unc
 ## Current limits
 
 - The Unity project has been checked for code structure but **has not been opened in the Unity Editor or tested on Android** in this workspace. An APK and phone screenshots are not yet available.
-- Level map and progress saving are present. Unique world art, boss battles, sound design, reward wheel and optimized stress testing are still pending.
+- Level map and progress saving are present. Unique world art, boss battles, recorded music and full Android stress testing are still pending. Procedural sound cues, particle effects and a simple free reward spin are included.
 - This repository contains no personal photograph. Import it locally from the copy you own.
 
 ## Build menu
