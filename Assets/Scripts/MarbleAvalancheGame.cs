@@ -243,7 +243,7 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
         }
         if(Time.frameCount%3==0)for(int i=0;i<falling.Count&&i<110;i++)
             if(falling[i]&&!falling[i].Scored)Spark(falling[i].transform.position,1,Palette[falling[i].ColorIndex]);
-        if(recoil>0) {recoil=Mathf.MoveTowards(recoil,0,Time.deltaTime*.85f);barrel.localPosition=new Vector3(0,-recoil,0);}
+        if(recoil>0) {recoil=Mathf.MoveTowards(recoil,0,Time.deltaTime*.85f);barrel.position=new Vector3(0,-6.45f-recoil,-1);}
         if(settling && !projectile && Time.time>=settleUntil) {
             settling=false; int left=0;bool topEmpty=true;
             for(int r=0;r<Rows;r++) for(int c=0;c<Columns;c++) {
@@ -281,7 +281,8 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
     void Fire()
     {
         if(!playing||projectile||settling||shots<=0)return;
-        shots--; projectile=CreateMarble(currentColor,barrel.position+direction*.98f);
+        shots--; var muzzle=barrel.position+direction*.98f; muzzle.z=0;
+        projectile=CreateMarble(currentColor,muzzle);
         velocity=direction*12f; recoil=.23f;
         smoke.Emit(24);audioSource.PlayOneShot(launchSound);
         currentColor=nextColor;nextColor=ColorRoll();
