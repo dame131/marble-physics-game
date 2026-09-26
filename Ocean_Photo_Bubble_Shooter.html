@@ -18,7 +18,7 @@
     width: 100%;
     max-width: 420px;
     height: 100%;
-    max-height: 800px;
+    max-height: none;
     margin: 0 auto;
     background: #001a33;
     overflow: hidden;
@@ -129,7 +129,7 @@
   <div id="ui-top">
     <div class="ui-box"><div class="label">LEVEL</div><div class="value" id="level">1</div></div>
     <div class="ui-box star"><div class="label">★ SCORE</div><div class="value" id="score">0</div></div>
-    <div class="ui-box"><div class="label">SHOTS</div><div class="value" id="shots">24</div></div>
+    <div class="ui-box"><div class="label">SHOTS</div><div class="value" id="shots">240</div></div>
     <div class="ui-box"><div class="label">DROP</div><div class="value" id="drop">0/30</div></div>
   </div>
   <div id="buttons">
@@ -178,19 +178,16 @@ const COLORS = [
   { main: '#e040a0', light: '#ff98d0', dark: '#800040' },
 ];
 
-const R = 15;
+const MAX_ROWS = 36;
+const MAX_COLS = 24;
+const TOP_Y = 62;
+const R = Math.max(5, Math.min(W / (MAX_COLS * 2), (H - TOP_Y - 195) / ((MAX_ROWS - 1) * 1.72)));
 const ROW_H = R * 1.72;
 const COL_W = R * 2;
-const MAX_ROWS = 13;
-const MAX_COLS = 11;
-const TOP_Y = 62;
-
-function PHOTO_CX() { return W / 2; }
-function PHOTO_CY() { return TOP_Y + ROW_H * 5.2; }
-const PHOTO_R = 72;
 
 let grid = [];
-let score = 0, shots = 24, level = 1, dropCount = 0, dropMax = 30;
+let revealed = [];
+let score = 0, shots = 240, level = 1, dropCount = 0, dropMax = 30;
 let currentColor = 0, nextColor = 1;
 let aimAngle = -Math.PI / 2;
 let flying = null;
@@ -227,10 +224,7 @@ function initGrid() {
     for (let c = 0; c < cols; c++) {
       const x = getBubbleX(r, c);
       const y = getBubbleY(r);
-      const dist = Math.hypot(x - PHOTO_CX(), y - PHOTO_CY());
-      if (dist < PHOTO_R + R * 0.85) {
-        row.push(null);
-      } else if (r < 8) {
+      if (r < MAX_ROWS - 3) {
         row.push(Math.floor(Math.random() * COLORS.length));
       } else {
         row.push(null);
@@ -238,6 +232,7 @@ function initGrid() {
     }
     grid.push(row);
   }
+  revealed = grid.map(row => row.map(() => false));
   currentColor = Math.floor(Math.random() * COLORS.length);
   nextColor = Math.floor(Math.random() * COLORS.length);
 }
@@ -302,6 +297,7 @@ function removeFloating() {
       if (grid[r][c] !== null && !connected.has(r + ',' + c)) {
         spawnPop(getBubbleX(r,c), getBubbleY(r), grid[r][c]);
         grid[r][c] = null;
+        revealed[r][c] = true;
         dropped++;
         score += 20;
       }
@@ -354,17 +350,6 @@ function updateFlying() {
     flying = null;
     return;
   }
-  // Photo bounce
-  const pdx = flying.x - PHOTO_CX(), pdy = flying.y - PHOTO_CY();
-  const pdist = Math.hypot(pdx, pdy);
-  if (pdist < PHOTO_R + R * 0.65) {
-    const nx = pdx / (pdist || 1), ny = pdy / (pdist || 1);
-    const dot = flying.vx * nx + flying.vy * ny;
-    flying.vx -= 2 * dot * nx;
-    flying.vy -= 2 * dot * ny;
-    flying.x = PHOTO_CX() + nx * (PHOTO_R + R * 0.7);
-    flying.y = PHOTO_CY() + ny * (PHOTO_R + R * 0.7);
-  }
   // Bubble collision
   for (let r = 0; r < MAX_ROWS; r++) {
     for (let c = 0; c < grid[r].length; c++) {
@@ -385,7 +370,6 @@ function attachBubble(x, y, color) {
     for (let c = 0; c < grid[r].length; c++) {
       if (grid[r][c] !== null) continue;
       const bx = getBubbleX(r, c), by = getBubbleY(r);
-      if (Math.hypot(bx - PHOTO_CX(), by - PHOTO_CY()) < PHOTO_R + R * 0.55) continue;
       const d = Math.hypot(x - bx, y - by);
       if (d < bestD) { bestD = d; best = {r, c}; }
     }
@@ -397,6 +381,7 @@ function attachBubble(x, y, color) {
       for (const m of matches) {
         spawnPop(getBubbleX(m.r, m.c), getBubbleY(m.r), grid[m.r][m.c]);
         grid[m.r][m.c] = null;
+        revealed[m.r][m.c] = true;
         score += 50;
       }
       dropCount = Math.min(dropMax, dropCount + matches.length);
@@ -437,15 +422,7 @@ function checkLose() {
       document.getElementById('overlay').style.display = 'flex';
     }
   }
-  for (let c = 0; c < grid[MAX_ROWS-1].length; c++) {
-    if (grid[MAX_ROWS-1][c] !== null) {
-      gameOver = true;
-      document.getElementById('overlay-title').textContent = 'Bubbles Overflow!';
-      document.getElementById('overlay-text').textContent = 'Score: ' + score;
-      document.getElementById('overlay').style.display = 'flex';
-      break;
-    }
-  }
+
 }
 
 function updateUI() {
@@ -581,20 +558,26 @@ function drawBubble(x, y, colorIdx, scale) {
 
 function drawPhoto() {
   if (!photoLoaded) return;
-  const cx = PHOTO_CX(), cy = PHOTO_CY(), r = PHOTO_R;
   ctx.save();
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.clip();
-  const aspect = photoImg.width / photoImg.height;
-  let dw, dh;
-  if (aspect > 1) { dh = r*2; dw = dh * aspect; }
-  else { dw = r*2; dh = dw / aspect; }
-  ctx.drawImage(photoImg, cx - dw/2, cy - dh/2, dw, dh);
+  if (!gameOver) {
+    // Every occupied tile masks the picture; cleared tiles expose its matching area.
+    ctx.beginPath();
+    for (let r = 0; r < MAX_ROWS; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        if (revealed[r][c]) {
+          const x = getBubbleX(r, c), y = getBubbleY(r);
+          ctx.moveTo(x + R * 1.06, y);
+          ctx.arc(x, y, R * 1.06, 0, Math.PI * 2);
+        }
+      }
+    }
+    ctx.clip();
+  }
+  // Cover the entire playfield with the full-size portrait, preserving proportions.
+  const scale = Math.max(W / photoImg.width, H / photoImg.height);
+  const dw = photoImg.width * scale, dh = photoImg.height * scale;
+  ctx.drawImage(photoImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
   ctx.restore();
-  // Gold frame
-  ctx.beginPath(); ctx.arc(cx, cy, r+2.5, 0, Math.PI*2);
-  ctx.strokeStyle = '#f0c040'; ctx.lineWidth = 4.5; ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx, cy, r+5.5, 0, Math.PI*2);
-  ctx.strokeStyle = 'rgba(255,220,100,0.35)'; ctx.lineWidth = 2.5; ctx.stroke();
 }
 
 function drawCannon() {
@@ -657,7 +640,6 @@ function drawTrajectory() {
     if (x < R) { x = R; vx *= -1; }
     if (x > W-R) { x = W-R; vx *= -1; }
     if (y < TOP_Y) break;
-    if (Math.hypot(x-PHOTO_CX(), y-PHOTO_CY()) < PHOTO_R + R) break;
     let hit = false;
     for (let r = 0; r < 7; r++) {
       for (let c = 0; c < grid[r].length; c++) {
@@ -766,6 +748,7 @@ document.getElementById('btn-blast').onclick = function() {
           for (const m of matches) {
             spawnPop(getBubbleX(m.r, m.c), getBubbleY(m.r), grid[m.r][m.c]);
             grid[m.r][m.c] = null;
+            revealed[m.r][m.c] = true;
             score += 30;
           }
           dropCount = Math.min(dropMax, dropCount + matches.length);
@@ -793,7 +776,7 @@ document.getElementById('btn-map').onclick = function() {
 };
 document.getElementById('restart').onclick = function() {
   document.getElementById('overlay').style.display = 'none';
-  score = 0; shots = 24; dropCount = 0; level = 1;
+  score = 0; shots = 240; dropCount = 0; level = 1;
   gameOver = false; flying = null; particles = [];
   initGrid();
   updateUI();
