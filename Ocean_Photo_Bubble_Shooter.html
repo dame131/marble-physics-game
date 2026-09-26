@@ -60,12 +60,14 @@
     left: 0; right: 0;
     display: flex;
     justify-content: space-around;
-    padding: 0 16px;
+    padding: 0 5px;
+    gap: 3px;
     z-index: 10;
   }
   .btn {
-    width: 58px;
-    height: 58px;
+    width: clamp(48px, 13vw, 58px);
+    height: clamp(48px, 13vw, 58px);
+    flex: 0 0 auto;
     border-radius: 50%;
     background: radial-gradient(circle at 30% 30%, #ffe066, #c09020 60%, #704010);
     border: 2.5px solid #fff8c0;
@@ -81,6 +83,7 @@
     transition: transform 0.1s;
   }
   .btn:active { transform: scale(0.92); }
+  #btn-fire { background: radial-gradient(circle at 30% 25%, #ffb49d, #ed2514 55%, #790a08); color: white; border-color: #ffe39e; text-shadow: 0 1px 3px #630000; }
   .btn .icon { font-size: 20px; line-height: 1; margin-bottom: 1px; }
   #overlay {
     position: absolute;
@@ -135,6 +138,7 @@
   <div id="buttons">
     <div class="btn" id="btn-map"><div class="icon">🗺️</div>MAP</div>
     <div class="btn" id="btn-swap"><div class="icon">🔄</div>SWAP</div>
+    <button class="btn" id="btn-fire" type="button" aria-label="Fire marble"><span class="icon">🔥</span>FIRE</button>
     <div class="btn" id="btn-blast"><div class="icon">💥</div>BLAST</div>
     <div class="btn" id="btn-sound"><div class="icon">🔊</div>SOUND</div>
   </div>
@@ -713,9 +717,7 @@ canvas.addEventListener('mousedown', function(e) {
 canvas.addEventListener('mousemove', function(e) {
   if (isAiming) updateAim(getPos(e));
 });
-canvas.addEventListener('mouseup', function() {
-  if (isAiming) { isAiming = false; shoot(); }
-});
+canvas.addEventListener('mouseup', function() { isAiming = false; });
 canvas.addEventListener('touchstart', function(e) {
   e.preventDefault();
   if (gameOver) return;
@@ -728,9 +730,10 @@ canvas.addEventListener('touchmove', function(e) {
 }, {passive: false});
 canvas.addEventListener('touchend', function(e) {
   e.preventDefault();
-  if (isAiming) { isAiming = false; shoot(); }
+  isAiming = false;
 });
 
+document.getElementById('btn-fire').onclick = shoot;
 document.getElementById('btn-swap').onclick = function() {
   if (gameOver || flying) return;
   const t = currentColor; currentColor = nextColor; nextColor = t;
