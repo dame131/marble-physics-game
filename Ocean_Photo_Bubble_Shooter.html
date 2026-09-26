@@ -316,7 +316,8 @@ function removeFloating() {
 
 function spawnPop(x, y, colorIdx) {
   const col = COLORS[colorIdx];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 7; i++) {
+    if (particles.length >= 700) break;
     particles.push({
       x: x, y: y,
       vx: (Math.random()-0.5)*7,
@@ -671,10 +672,10 @@ function drawParticles() {
   for (let i = particles.length-1; i >= 0; i--) {
     const p = particles[i];
     p.x += p.vx; p.y += p.vy; p.vy += 0.14; p.life--;
-    ctx.globalAlpha = Math.max(0, p.life / 35);
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    ctx.globalAlpha = Math.min(1, p.life / 35);
     ctx.beginPath(); ctx.arc(p.x, p.y, p.size*(p.life/35), 0, Math.PI*2);
     ctx.fillStyle = p.color; ctx.fill();
-    if (p.life <= 0) particles.splice(i, 1);
   }
   ctx.globalAlpha = 1;
 }
