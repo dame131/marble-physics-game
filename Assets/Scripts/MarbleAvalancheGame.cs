@@ -8,6 +8,7 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
 {
     const int Columns = 21, Rows = 30, PaletteCount = 8;
     const float Radius = .185f, StepX = .37f, StepY = .325f;
+    static readonly string[] WorldNames = {"Coral Reef","Crystal Cavern","Sunset Canyon","Sky Garden","Candy Forge","Jungle Falls","Moon Temple","Storm Coast","Starfield","Golden Crown"};
     static readonly Color[] Palette = {
         new Color(1f,.09f,.27f), new Color(.02f,.86f,.98f), new Color(1f,.72f,.06f),
         new Color(.57f,.19f,.97f), new Color(.21f,.94f,.31f), new Color(1f,.35f,.05f),
@@ -20,12 +21,14 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
     readonly int[] basketValues = {100,250,100};
     Camera cam;
     Transform barrel;
-    ParticleSystem smoke;
+    ParticleSystem smoke, sparkles;
+    AudioSource audioSource;
+    AudioClip launchSound, popSound, basketSound, winSound;
     MarblePiece projectile;
     Vector3 velocity;
     Vector3 direction = Vector3.up;
-    int level = 1, unlocked = 1, score, shots, currentColor, nextColor, dropCount, goal, powers;
-    bool playing, aiming, settling, won, showingMap = true;
+    int level = 1, unlocked = 1, score, shots, currentColor, nextColor, dropCount, goal, powers, levelStartScore, earnedStars, coins;
+    bool playing, aiming, settling, won, showingMap = true, rewardReady;
     float settleUntil, recoil, bannerUntil;
     string banner = "";
     Texture2D portrait;
@@ -42,6 +45,7 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
         random = new System.Random(Environment.TickCount);
         unlocked = Mathf.Clamp(PlayerPrefs.GetInt("UnlockedLevel",1),1,100);
         score = PlayerPrefs.GetInt("TotalScore",0);
+        coins=PlayerPrefs.GetInt("Coins",0);
         cam = Camera.main;
         if (!cam) { var cameraObject = new GameObject("Main Camera"); cam = cameraObject.AddComponent<Camera>(); cameraObject.tag = "MainCamera"; }
         cam.orthographic = true; cam.orthographicSize = 9.1f; cam.backgroundColor = new Color(.035f,.36f,.56f);
@@ -53,7 +57,7 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
             var m = new Material(Shader.Find("Standard")); m.color = Palette[i]; m.SetFloat("_Metallic",.22f);
             m.SetFloat("_Glossiness",.93f); materials[i] = m;
         }
-        MakeScenery(); MakeCannon(); MakeBaskets(); LoadPortrait();
+        MakeScenery(); MakeCannon(); MakeBaskets(); MakeEffectsAndSound(); LoadPortrait();
         ready = true;
     }
 
@@ -117,6 +121,41 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
         }
     }
 
+    void MakeEffectsAndSound()
+    {
+        var particlesObject=new GameObject("Pixy dust and marble sparks");
+        sparkles=particlesObject.AddComponent<ParticleSystem>();
+        var main=sparkles.main; main.playOnAwake=false;main.startLifetime=.65f;
+        main.startSpeed=1.65f;main.startSize=.075f;main.maxParticles=700;
+        main.simulationSpace=ParticleSystemSimulationSpace.World;
+        var emission=sparkles.emission;emission.enabled=false;
+        var shape=sparkles.shape;shape.enabled=false;
+        sparkles.Stop(true,ParticleSystemStopBehavior.StopEmittingAndClear);
+        audioSource=gameObject.AddComponent<AudioSource>();
+        launchSound=Tone(155,.16f);popSound=Tone(790,.12f);
+        basketSound=Tone(1110,.14f);winSound=Tone(520,.52f);
+    }
+
+    AudioClip Tone(float frequency,float duration)
+    {
+        const int sampleRate=22050;int count=Mathf.CeilToInt(duration*sampleRate);
+        var samples=new float[count];
+        for(int i=0;i<count;i++) {
+            float t=(float)i/sampleRate;
+            float fade=Mathf.Pow(1f-(float)i/count,2f);
+            samples[i]=Mathf.Sin(2*Mathf.PI*frequency*t)*fade*.23f;
+        }
+        var clip=AudioClip.Create("Arcade tone "+frequency,count,1,sampleRate,false);
+        clip.SetData(samples,0);return clip;
+    }
+
+    void Spark(Vector3 point,int count,Color color)
+    {
+        if(!sparkles)return;
+        var emit=new ParticleSystem.EmitParams {position=point,startColor=color};
+        sparkles.Emit(emit,count);
+    }
+
     void LoadPortrait()
     {
         var source=Resources.Load<Texture2D>("Portrait");
@@ -140,7 +179,9 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
 
     void BeginLevel(int selected)
     {
-        level=selected; score=Math.Max(0,score); won=false; playing=true; showingMap=false;
+        level=selected; score=Math.Max(0,score); levelStartScore=score; won=false; rewardReady=false; playing=true; showingMap=false;
+        random=new System.Random(level*7919+131);
+        cam.backgroundColor=Color.Lerp(new Color(.03f,.5f,.7f),Palette[((level-1)/10)%PaletteCount]*.55f, .38f);
         settling=false; projectile=null; revealed.Clear();
         foreach(var tile in revealTiles) if(tile) Destroy(tile); revealTiles.Clear();
         if(fullPortrait) fullPortrait.SetActive(false);
@@ -149,12 +190,21 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
         }
         foreach(var m in falling) if(m) Destroy(m.gameObject); falling.Clear();
         shots=level==1?35:level==2?42:48; goal=level==1?30:level==2?45:55;
+        if(level%10==0) goal+=12;
         powers=2; dropCount=0; currentColor=ColorRoll(); nextColor=ColorRoll();
         int height=level==1?23:level==2?27:Math.Min(30,24+level%7);
         for(int r=0;r<height;r++) for(int c=0;c<Columns;c++) {
-            bool inside=r<3||Math.Abs(c-10)<10.5f-r*.08f;
-            if(inside && random.NextDouble() > (r>12?.16:.05)) {
-                var marble=CreateMarble(ColorRoll(),Position(r,c));
+            // Ten themed silhouettes and a fixed per-level seed make all 100 boards reproducible.
+            float phase=(level%10)*.65f;
+            int pattern=(level-1)/10;
+            float center=10f+Mathf.Sin(r*.31f+phase)*(.3f+pattern*.06f);
+            float halfWidth=10.7f-r*(level<3?.075f:.023f);
+            bool inside=r<3||Mathf.Abs(c-center)<halfWidth;
+            bool arch=pattern%3==1&&r>5&&r<14&&Mathf.Abs(c-center)<(2+r%3);
+            bool tunnel=pattern%3==2&&r>9&&r<17&&(c+level)%7==0;
+            if(inside&&!arch&&!tunnel&&random.NextDouble() > (r>12&&level<3?.12:.035)) {
+                int clustered=(c/3+r/4+level+random.Next(3))%Math.Min(8,6+level);
+                var marble=CreateMarble(clustered,Position(r,c));
                 marble.Row=r; marble.Column=c; cells[r,c]=marble;
             }
         }
@@ -188,9 +238,11 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
             var m=falling[i]; if(!m) {falling.RemoveAt(i);continue;}
             if(m.Scored||m.transform.position.y<-9.2f) {Destroy(m.gameObject);falling.RemoveAt(i);continue;}
             for(int b=0;b<3;b++) if(basketTriggers[b].bounds.Contains(m.transform.position)) {
-                m.Scored=true; score+=basketValues[b]; banner="+"+basketValues[b]; bannerUntil=Time.time+.7f; break;
+                m.Scored=true; score+=basketValues[b]; audioSource.PlayOneShot(basketSound); Spark(m.transform.position,12,Color.yellow); banner="+"+basketValues[b]; bannerUntil=Time.time+.7f; break;
             }
         }
+        if(Time.frameCount%3==0)for(int i=0;i<falling.Count&&i<110;i++)
+            if(falling[i]&&!falling[i].Scored)Spark(falling[i].transform.position,1,Palette[falling[i].ColorIndex]);
         if(recoil>0) {recoil=Mathf.MoveTowards(recoil,0,Time.deltaTime*.85f);barrel.localPosition=new Vector3(0,-recoil,0);}
         if(settling && !projectile && Time.time>=settleUntil) {
             settling=false; int left=0;bool topEmpty=true;
@@ -231,7 +283,7 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
         if(!playing||projectile||settling||shots<=0)return;
         shots--; projectile=CreateMarble(currentColor,barrel.position+direction*.98f);
         velocity=direction*12f; recoil=.23f;
-        smoke.Emit(24);
+        smoke.Emit(24);audioSource.PlayOneShot(launchSound);
         currentColor=nextColor;nextColor=ColorRoll();
     }
 
@@ -264,6 +316,7 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
         var group=SameColor(br,bc,color);
         if(group.Count>=3) {
             foreach(var p in group) RemoveCell(p.x,p.y);
+            audioSource.PlayOneShot(popSound);
             score+=group.Count*30;DropUnsupported();
         }
         settling=true;settleUntil=Time.time+1.15f;
@@ -286,7 +339,7 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
     void RemoveCell(int r,int c)
     {
         var marble=cells[r,c];if(!marble)return;
-        cells[r,c]=null; Reveal(r,c); Destroy(marble.gameObject);
+        cells[r,c]=null; Reveal(r,c); Spark(marble.transform.position,9,Palette[marble.ColorIndex]); Destroy(marble.gameObject);
     }
 
     void DropUnsupported()
@@ -347,11 +400,28 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
     void Win()
     {
         won=true;playing=false;score+=shots*25;
+        earnedStars=shots>=18?3:shots>=7?2:1;
+        PlayerPrefs.SetInt("Stars"+level,Mathf.Max(earnedStars,PlayerPrefs.GetInt("Stars"+level,0)));
+        rewardReady=true;audioSource.PlayOneShot(winSound);
         unlocked=Mathf.Max(unlocked,Mathf.Min(100,level+1));
         PlayerPrefs.SetInt("UnlockedLevel",unlocked);
-        PlayerPrefs.SetInt("TotalScore",score);PlayerPrefs.Save();
+        PlayerPrefs.SetInt("TotalScore",score);PlayerPrefs.SetInt("Coins",coins);PlayerPrefs.Save();
         if(fullPortrait) fullPortrait.SetActive(true);
         banner="PHOTO REVEALED!";bannerUntil=Time.time+3;
+    }
+
+    void SpinReward()
+    {
+        if(!won||!rewardReady)return;
+        rewardReady=false;
+        int prize=random.Next(4);
+        if(prize==0) {coins+=250;banner="SPIN: +250 COINS";}
+        if(prize==1) {coins+=500;banner="SPIN: +500 COINS";}
+        if(prize==2) {powers+=1;banner="SPIN: BONUS BLAST";}
+        if(prize==3) {score+=750;banner="SPIN: +750 POINTS";}
+        bannerUntil=Time.time+4;
+        PlayerPrefs.SetInt("Coins",coins);PlayerPrefs.SetInt("TotalScore",score);
+        PlayerPrefs.Save();
     }
 
     void OnGUI()
@@ -377,7 +447,7 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
         if(showingMap) {
             GUI.Box(new Rect(12,74,width-24,height-155),"MARBLE TRAIL");
             var scroll=new GUIStyle(GUI.skin.label) {fontSize=15,alignment=TextAnchor.MiddleCenter};
-            GUI.Label(new Rect(20,95,width-40,35),"100 stops · completed levels unlock the next",scroll);
+            GUI.Label(new Rect(20,95,width-40,35),WorldNames[(unlocked-1)/10]+" · "+coins+" coins · 100 stops",scroll);
             var area=new Rect(20,135,width-40,height-225);
             mapScroll=GUI.BeginScrollView(area,mapScroll,new Rect(0,0,area.width-20,25*62));
             for(int i=1;i<=100;i++) {
@@ -385,13 +455,14 @@ public sealed class MarbleAvalancheGame : MonoBehaviour
                 if(row%2==1) column=3-column;
                 var rect=new Rect(column*(area.width/4)+4,row*62,area.width/4-8,53);
                 bool enabled=GUI.enabled;GUI.enabled=i<=unlocked;
-                if(GUI.Button(rect,i<=unlocked?i+" ★":"🔒",btn))BeginLevel(i);
+                if(GUI.Button(rect,i<=unlocked?i+" "+new string('★',PlayerPrefs.GetInt("Stars"+i,0)):"🔒",btn))BeginLevel(i);
                 GUI.enabled=enabled;
             }
             GUI.EndScrollView();
         } else if(won||!playing&&shots<=0) {
-            GUI.Box(new Rect(42,height*.39f,width-84,180),won?"LEVEL CLEAR — PHOTO REVEALED":"OUT OF SHOTS");
-            if(GUI.Button(new Rect(72,height*.39f+102,width-144,55),won?"NEXT LEVEL":"RETRY",btn))BeginLevel(won?Math.Min(100,level+1):level);
+            GUI.Box(new Rect(42,height*.37f,width-84,225),won?"LEVEL CLEAR  "+new string('★',earnedStars)+"  ·  +"+(score-levelStartScore):"OUT OF SHOTS");
+            if(won&&rewardReady&&GUI.Button(new Rect(72,height*.37f+65,width-144,51),"SPIN FREE REWARD",btn))SpinReward();
+            if(GUI.Button(new Rect(72,height*.37f+135,width-144,55),won?"NEXT LEVEL":"RETRY",btn))BeginLevel(won?Math.Min(100,level+1):level);
         }
         if(Time.time<bannerUntil)GUI.Label(new Rect(0,height*.67f,width,48),banner,title);
         GUI.matrix=old;
